@@ -14,14 +14,14 @@ const sendResponse = (
   message: string,
   data: object = []
 ) => {
-  let dataTosend = {
+  let dataTosend: { message: string; data?: object } = {
     message,
   };
 
-  if (data) {
+  if (Object.keys(data).length > 0) {
     dataTosend = {
       ...dataTosend,
-      ...data,
+      data,
     };
   }
   return res.status(status).json(dataTosend);
@@ -35,6 +35,21 @@ app.get('/', (req: Request, res: Response) => {
 app.post('/users', async (req: Request, res: Response) => {
   try {
     const { name, email } = req.body;
+    if (!name || name.trim().length === 0) {
+      return sendResponse(res, 422, 'Name is required');
+    }
+    if (!email || email.trim().length === 0) {
+      return sendResponse(res, 422, 'Email is required');
+    }
+
+    const userExists = await prisma.user.findUnique({
+      where: {
+        email,
+      },
+    });
+    if (userExists) {
+      return sendResponse(res, 422, 'User already exists');
+    }
     const user = await prisma.user.create({
       data: {
         name,
@@ -50,7 +65,13 @@ app.post('/users', async (req: Request, res: Response) => {
 // get all users
 app.get('/users', async (req: Request, res: Response) => {
   try {
-    const users = await prisma.user.findMany();
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    });
     if (!users || users.length === 0) {
       return sendResponse(res, 404, 'No users found');
     }
@@ -68,6 +89,11 @@ app.get('/users/:id', async (req: Request, res: Response) => {
       where: {
         id: Number(id),
       },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
     });
     if (!user) {
       return sendResponse(res, 404, 'User not found');
@@ -83,19 +109,44 @@ app.put('/users/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { name, email } = req.body;
-    const user = await prisma.user.update({
+    const existingUser = await prisma.user.findUnique({
+      where: {
+        id: Number(id),
+      },
+    });
+    if (!existingUser) {
+      return sendResponse(res, 404, 'User not found');
+    }
+
+    if (email) {
+      const userWithSameEmail = await prisma.user.findUnique({
+        where: {
+          email,
+        },
+      });
+      if (userWithSameEmail && userWithSameEmail.id !== Number(id)) {
+        return sendResponse(res, 422, 'Email already exists');
+      }
+    }
+
+    // Update the user based on the provided data
+    const updatedUser = await prisma.user.update({
       where: {
         id: Number(id),
       },
       data: {
-        name,
-        email,
+        name: name || existingUser.name, // Update name if provided, otherwise keep the existing name
+        email: email || existingUser.email, // Update email if provided, otherwise keep the existing email
       },
     });
-    if (!user) {
-      return sendResponse(res, 404, 'User not found');
-    }
-    sendResponse(res, 200, 'User updated successfully', { user });
+
+    sendResponse(res, 200, 'User updated successfully', {
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+      },
+    });
   } catch (error: any) {
     sendResponse(res, 500, 'Something went wrong', { error });
   }
