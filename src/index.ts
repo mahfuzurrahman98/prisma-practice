@@ -12,19 +12,19 @@ const sendResponse = (
   res: Response,
   status: number,
   message: string,
-  data: object = []
+  data: object = {}
 ) => {
-  let dataTosend: { message: string; data?: object } = {
+  let _response: { message: string; data?: object } = {
     message,
   };
 
   if (Object.keys(data).length > 0) {
-    dataTosend = {
-      ...dataTosend,
+    _response = {
+      ..._response,
       data,
     };
   }
-  return res.status(status).json(dataTosend);
+  return res.status(status).json(_response);
 };
 
 app.get('/', (req: Request, res: Response) => {
@@ -48,7 +48,7 @@ app.post('/users', async (req: Request, res: Response) => {
       },
     });
     if (userExists) {
-      return sendResponse(res, 422, 'User already exists');
+      return sendResponse(res, 409, 'User already exists');
     }
     const user = await prisma.user.create({
       data: {
